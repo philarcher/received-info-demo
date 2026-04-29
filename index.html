@@ -1,29 +1,142 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width">
-  <link rel="stylesheet" href="https://ref.gs1.org/styles/base.css">
+  <meta charset="UTF-8">
+  <title>Live Audience Stats</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <meta name="description" content="Quck demo of information received when a QR Code is scanned">
-  </head>
+  <style>
+    body { font-family: sans-serif; background: #fafafa; }
+    .header { text-align: center; padding: 20px; }
+    .reset-btn { background: #BA0C2F; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 16px; margin-bottom: 20px; }
+    .reset-btn:hover { background: #8a0923; }
+  </style>
+</head>
 <body>
-  <img src="qr.svg" alt="QR Code containing the URL of this page">
-  <div id="results"><h2>Results</h2>
-  <div style="display: flex; justify-content: space-around; align-items: center; width: 100%; max-width: 1000px; margin: 0 auto; padding: 20px;">
-    
-    <div style="width: 45%; text-align: center;">
-      <h2>Device Operating Systems</h2>
-      <canvas id="osChart"></canvas>
+
+  <div id="app">
+    <div class="header">
+      <img src="your-qr-code.png" alt="Scan Me" width="200"> 
+      <br>
+      <button class="reset-btn" @click="resetData">Reset Demo Data</button>
+      <h2>Total Scans: {{ totalScans }}</h2>
     </div>
 
-    <div style="width: 45%; text-align: center;">
-      <h2>Detected Languages</h2>
-      <canvas id="langChart"></canvas>
+    <div style="display: flex; justify-content: space-around; align-items: center; width: 100%; max-width: 1000px; margin: 0 auto; padding: 20px;">
+      <div style="width: 45%; text-align: center;">
+        <h2>Operating Systems</h2>
+        <canvas id="osChart"></canvas>
+      </div>
+      <div style="width: 45%; text-align: center;">
+        <h2>Languages</h2>
+        <canvas id="langChart"></canvas>
+      </div>
     </div>
+  </div>
 
-  </div>
-  </div>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+    // PASTE YOUR FIREBASE CONFIG HERE TOO
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const { createApp } = Vue;
+
+    createApp({
+      data() {
+        return {
+          totalScans: 0,
+          osChart: null,
+          langChart: null,
+          langNames: {
+            'no': 'Norwegian', 'nb': 'Norwegian (Bokmål)', 'nn': 'Norwegian (Nynorsk)',
+            'sv': 'Swedish', 'da': 'Danish', 'fi': 'Finnish', 'is': 'Icelandic', 
+            'en': 'English', 'de': 'German'
+          }
+        }
+      },
+      mounted() {
+        this.initializeCharts();
+        this.listenToFirebase();
+      },
+      methods: {
+        initializeCharts() {
+          const osCtx = document.getElementById('osChart').getContext('2d');
+          this.osChart = new Chart(osCtx, {
+            type: 'pie',
+            data: { labels: ['iOS', 'Android', 'Other'], datasets: [{ data: [0, 0, 0], backgroundColor: ['#000000', '#3DDC84', '#888888'] }] },
+            options: { responsive: true, animation: { duration: 500 } }
+          });
+
+          const langCtx = document.getElementById('langChart').getContext('2d');
+          this.langChart = new Chart(langCtx, {
+            type: 'pie',
+            data: { labels: [], datasets: [{ data: [], backgroundColor: ['#BA0C2F', '#006AA7', '#C8102E', '#002F6C', '#02529C', '#FFC72C', '#FFFFFF'] }] },
+            options: { responsive: true, animation: { duration: 500 } }
+          });
+        },
+
+        listenToFirebase() {
+          const scansRef = ref(db, 'scans');
+          // This triggers automatically every time a new scan is added OR data is deleted
+          onValue(scansRef, (snapshot) => {
+            const data = snapshot.val();
+            this.processData(data);
+          });
+        },
+
+        processData(data) {
+          // 1. Reset counters
+          let osCounts = { 'iOS': 0, 'Android': 0, 'Other': 0 };
+          let langCounts = {};
+          this.totalScans = 0;
+
+          // 2. Tally up the new data
+          if (data) {
+            const scans = Object.values(data);
+            this.totalScans = scans.length;
+            
+            scans.forEach(scan => {
+              // OS Logic
+              if (osCounts[scan.os] !== undefined) { osCounts[scan.os]++; } 
+              else { osCounts['Other']++; }
+
+              // Language Logic
+              let baseLang = scan.language.split('-')[0].toLowerCase();
+              let displayLang = this.langNames[baseLang] || baseLang.toUpperCase();
+              langCounts[displayLang] = (langCounts[displayLang] || 0) + 1;
+            });
+          }
+
+          // 3. Update Charts
+          this.osChart.data.datasets[0].data = [osCounts['iOS'], osCounts['Android'], osCounts['Other']];
+          this.osChart.update();
+
+          this.langChart.data.labels = Object.keys(langCounts);
+          this.langChart.data.datasets[0].data = Object.values(langCounts);
+          this.langChart.update();
+        },
+
+        // Wipes the 'scans' node in Firebase
+        resetData() {
+          if(confirm("Are you sure you want to clear all demo data?")) {
+            set(ref(db, 'scans'), null);
+          }
+        }
+      }
+    }).mount('#app');
+  </script>
 </body>
 </html>
