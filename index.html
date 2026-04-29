@@ -4,16 +4,26 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width">
   <link rel="stylesheet" href="https://ref.gs1.org/styles/base.css">
-  <script src="https://ref.gs1.org/standards/genspecs/gscn/vue.global.prod.js"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <meta name="description" content="Quck demo of information received when a QR Code is scanned">
   </head>
 <body>
   <img src="qr.svg" alt="QR Code containing the URL of this page">
   <div id="results"><h2>Results</h2>
-  <table>
-    <tr><th>Feature</th><th>Number of scans</th></tr>
-  </table>
-  
+  <div style="display: flex; justify-content: space-around; align-items: center; width: 100%; max-width: 1000px; margin: 0 auto; padding: 20px;">
+    
+    <div style="width: 45%; text-align: center;">
+      <h2>Device Operating Systems</h2>
+      <canvas id="osChart"></canvas>
+    </div>
+
+    <div style="width: 45%; text-align: center;">
+      <h2>Detected Languages</h2>
+      <canvas id="langChart"></canvas>
+    </div>
+
+  </div>
   </div>
 </body>
 </html>
