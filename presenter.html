@@ -61,11 +61,8 @@
           totalScans: 0,
           osChart: null,
           langChart: null,
-          langNames: {
-            'no': 'Norwegian', 'nb': 'Norwegian (Bokmål)', 'nn': 'Norwegian (Nynorsk)',
-            'sv': 'Swedish', 'da': 'Danish', 'fi': 'Finnish', 'is': 'Icelandic', 
-            'en': 'English', 'de': 'German'
-          }
+          // We will store generated colors here so they don't flash/change on every single update
+          langColors: {} 
         }
       },
       mounted() {
@@ -77,21 +74,44 @@
           const osCtx = document.getElementById('osChart').getContext('2d');
           this.osChart = new Chart(osCtx, {
             type: 'pie',
-            data: { labels: ['iOS', 'Android', 'Other'], datasets: [{ data: [0, 0, 0], backgroundColor: ['#000000', '#3DDC84', '#888888'] }] },
+            data: { 
+              labels: ['iOS', 'Android', 'Other'], 
+              datasets: [{ 
+                data: [0, 0, 0], 
+                backgroundColor: ['#000000', '#3DDC84', '#888888'] 
+              }] 
+            },
             options: { responsive: true, animation: { duration: 500 } }
           });
 
           const langCtx = document.getElementById('langChart').getContext('2d');
           this.langChart = new Chart(langCtx, {
             type: 'pie',
-            data: { labels: [], datasets: [{ data: [], backgroundColor: ['#BA0C2F', '#006AA7', '#C8102E', '#002F6C', '#02529C', '#FFC72C', '#FFFFFF'] }] },
+            data: { 
+              labels: [], 
+              datasets: [{ 
+                data: [], 
+                backgroundColor: [] // Start empty, we will populate this dynamically
+              }] 
+            },
             options: { responsive: true, animation: { duration: 500 } }
           });
         },
 
+        // Helper function to generate a distinct color for new languages
+        generateColor(languageName) {
+          if (this.langColors[languageName]) {
+            return this.langColors[languageName]; // Return existing color if we already have one
+          }
+          // Generate a pleasing random color using HSL
+          const hue = Math.floor(Math.random() * 360);
+          const newColor = `hsl(${hue}, 70%, 55%)`;
+          this.langColors[languageName] = newColor;
+          return newColor;
+        },
+
         listenToFirebase() {
           const scansRef = ref(db, 'scans');
-          // This triggers automatically every time a new scan is added OR data is deleted
           onValue(scansRef, (snapshot) => {
             const data = snapshot.val();
             this.processData(data);
@@ -109,31 +129,47 @@
             const scans = Object.values(data);
             this.totalScans = scans.length;
             
+            // Native JS API to get readable language names
+            const languageNamesAPI = new Intl.DisplayNames(['en'], { type: 'language' });
+
             scans.forEach(scan => {
               // OS Logic
               if (osCounts[scan.os] !== undefined) { osCounts[scan.os]++; } 
               else { osCounts['Other']++; }
 
-              // Language Logic
+              // Dynamic Language Logic
               let baseLang = scan.language.split('-')[0].toLowerCase();
-              let displayLang = this.langNames[baseLang] || baseLang.toUpperCase();
+              let displayLang;
+              try {
+                displayLang = languageNamesAPI.of(baseLang); // e.g., 'fr' becomes 'French'
+              } catch (error) {
+                displayLang = baseLang.toUpperCase(); // Fallback if API fails
+              }
+              
               langCounts[displayLang] = (langCounts[displayLang] || 0) + 1;
             });
           }
 
-          // 3. Update Charts
+          // 3. Update OS Chart
           this.osChart.data.datasets[0].data = [osCounts['iOS'], osCounts['Android'], osCounts['Other']];
           this.osChart.update();
 
-          this.langChart.data.labels = Object.keys(langCounts);
-          this.langChart.data.datasets[0].data = Object.values(langCounts);
+          // 4. Update Language Chart Dynamically
+          const labels = Object.keys(langCounts);
+          const dataPoints = Object.values(langCounts);
+          const backgroundColors = labels.map(label => this.generateColor(label));
+
+          this.langChart.data.labels = labels;
+          this.langChart.data.datasets[0].data = dataPoints;
+          this.langChart.data.datasets[0].backgroundColor = backgroundColors;
+          
           this.langChart.update();
         },
 
-        // Wipes the 'scans' node in Firebase
         resetData() {
           if(confirm("Are you sure you want to clear all demo data?")) {
             set(ref(db, 'scans'), null);
+            this.langColors = {}; // Clear our saved colors too
           }
         }
       }
