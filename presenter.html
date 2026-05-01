@@ -53,26 +53,30 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const { createApp } = Vue;
+   // Import markRaw alongside createApp
+    const { createApp, markRaw } = Vue;
 
     createApp({
       data() {
         return {
           totalScans: 0,
-          osChart: null,
-          langChart: null,
-          // We will store generated colors here so they don't flash/change on every single update
+          // Notice we removed osChart and langChart from here!
           langColors: {} 
         }
       },
       mounted() {
+        // Initialize them as standard class properties, not reactive Vue data
+        this.osChart = null;
+        this.langChart = null;
+
         this.initializeCharts();
         this.listenToFirebase();
       },
       methods: {
         initializeCharts() {
           const osCtx = document.getElementById('osChart').getContext('2d');
-          this.osChart = new Chart(osCtx, {
+          // Wrap the new Chart in markRaw()
+          this.osChart = markRaw(new Chart(osCtx, {
             type: 'pie',
             data: { 
               labels: ['iOS', 'Android', 'Other'], 
@@ -82,28 +86,27 @@
               }] 
             },
             options: { responsive: true, animation: { duration: 500 } }
-          });
+          }));
 
           const langCtx = document.getElementById('langChart').getContext('2d');
-          this.langChart = new Chart(langCtx, {
+          // Wrap the new Chart in markRaw()
+          this.langChart = markRaw(new Chart(langCtx, {
             type: 'pie',
             data: { 
               labels: [], 
               datasets: [{ 
                 data: [], 
-                backgroundColor: [] // Start empty, we will populate this dynamically
+                backgroundColor: [] 
               }] 
             },
             options: { responsive: true, animation: { duration: 500 } }
-          });
+          }));
         },
 
-        // Helper function to generate a distinct color for new languages
         generateColor(languageName) {
           if (this.langColors[languageName]) {
-            return this.langColors[languageName]; // Return existing color if we already have one
+            return this.langColors[languageName]; 
           }
-          // Generate a pleasing random color using HSL
           const hue = Math.floor(Math.random() * 360);
           const newColor = `hsl(${hue}, 70%, 55%)`;
           this.langColors[languageName] = newColor;
@@ -119,17 +122,14 @@
         },
 
         processData(data) {
-          // 1. Reset counters
           let osCounts = { 'iOS': 0, 'Android': 0, 'Other': 0 };
           let langCounts = {};
           this.totalScans = 0;
 
-          // 2. Tally up the new data
           if (data) {
             const scans = Object.values(data);
             this.totalScans = scans.length;
             
-            // Native JS API to get readable language names
             const languageNamesAPI = new Intl.DisplayNames(['en'], { type: 'language' });
 
             scans.forEach(scan => {
@@ -141,20 +141,20 @@
               let baseLang = scan.language.split('-')[0].toLowerCase();
               let displayLang;
               try {
-                displayLang = languageNamesAPI.of(baseLang); // e.g., 'fr' becomes 'French'
+                displayLang = languageNamesAPI.of(baseLang); 
               } catch (error) {
-                displayLang = baseLang.toUpperCase(); // Fallback if API fails
+                displayLang = baseLang.toUpperCase(); 
               }
               
               langCounts[displayLang] = (langCounts[displayLang] || 0) + 1;
             });
           }
 
-          // 3. Update OS Chart
+          // Update OS Chart
           this.osChart.data.datasets[0].data = [osCounts['iOS'], osCounts['Android'], osCounts['Other']];
           this.osChart.update();
 
-          // 4. Update Language Chart Dynamically
+          // Update Language Chart
           const labels = Object.keys(langCounts);
           const dataPoints = Object.values(langCounts);
           const backgroundColors = labels.map(label => this.generateColor(label));
@@ -169,7 +169,7 @@
         resetData() {
           if(confirm("Are you sure you want to clear all demo data?")) {
             set(ref(db, 'scans'), null);
-            this.langColors = {}; // Clear our saved colors too
+            this.langColors = {}; 
           }
         }
       }
